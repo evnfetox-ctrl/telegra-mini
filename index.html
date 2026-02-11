@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bill Tracker Dashboard</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!-- Tailwind CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center p-4">
+
+<h2 class="text-2xl font-bold mb-4">💰 Bill Tracker Dashboard</h2>
+
+<!-- Summary -->
+<div id="summary" class="w-full max-w-md bg-blue-500 text-white rounded-xl p-4 shadow-md mb-6 text-center">
+  Loading summary...
+</div>
+
+<!-- Add New Bill -->
+<div class="w-full max-w-md bg-white p-4 rounded-xl shadow-md mb-6">
+  <h3 class="text-lg font-semibold mb-2">Add New Bill</h3>
+  <input id="title" placeholder="Title" class="w-full p-2 mb-2 border rounded-lg"/>
+  <input id="amount" type="number" placeholder="Amount" class="w-full p-2 mb-2 border rounded-lg"/>
+  <input id="due_date" type="date" class="w-full p-2 mb-2 border rounded-lg"/>
+  <input id="category" placeholder="Category" class="w-full p-2 mb-2 border rounded-lg"/>
+  <button onclick="addBill()" class="w-full bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition">Add Bill</button>
+</div>
+
+<!-- Dashboard -->
+<div class="w-full max-w-md">
+  <div class="flex justify-between items-center mb-2">
+    <h3 class="text-lg font-semibold">Your Bills</h3>
+    <button onclick="listBills()" class="bg-gray-300 p-1 rounded-lg hover:bg-gray-400 transition">Refresh</button>
+  </div>
+  <div id="billsList" class="space-y-4"></div>
+</div>
+
+<script>
+const tg = window.Telegram.WebApp;
+
+function sendToBot(data) {
+    tg.sendData(JSON.stringify(data));
+}
+
+let allBills = [];
+
+// Add bill
+function addBill() {
+    const title = document.getElementById('title').value;
+    const amount = parseFloat(document.getElementById('amount').value);
+    const due_date = document.getElementById('due_date').value;
+    const category = document.getElementById('category').value;
+
+    if(!title || !amount || !due_date || !category){
+        alert("Please fill all fields");
+        return;
+    }
+
+    sendToBot({ action: "add_bill", title, amount, due_date, category });
+
+    // Clear inputs
+    document.getElementById('title').value = '';
+    document.getElementById('amount').value = '';
+    document.getElementById('due_date').value = '';
+    document.getElementById('category').value = '';
+
+    setTimeout(listBills, 500);
+}
+
+// Request latest bills from bot
+function listBills() {
+    sendToBot({action: "list_bills"});
+}
+
+// Render dashboard
+function renderDashboard(bills) {
+    allBills = bills;
+    const billsListDiv = document.getElementById('billsList');
+    billsListDiv.innerHTML = "";
+
+    if(bills.length === 0){
+        billsListDiv.innerHTML = "<p class='text-gray-500'>No bills found.</p>";
+        document.getElementById('summary').innerText = "No bills added yet.";
+        return;
+    }
+
+    // --- Summary ---
+    let totalDue = 0, totalPaid = 0, upcoming = 0;
+    const now = new Date();
+
+    bills.forEach(b => {
+        if(b.status === "unpaid") totalDue += b.amount;
+        if(b.status === "paid") totalPaid += b.amount;
+        const dueDate = new Date(b.due_date);
+        if(b.status === "unpaid" && (dueDate - now)/(1000*60*60*24) <= 3 && (dueDate - now) > 0){
+            upcoming += 1;
+        }
+    });
+
+    document.getElementById('summary').innerHTML = `
+      <div class="flex justify-between text-sm font-medium">
+        <span>Total Due: $${totalDue.toFixed(2)}</span>
+        <span>Total Paid: $${totalPaid.toFixed(2)}</span>
+        <span>Due Soon: ${upcoming}</span>
+      </div>
+    `;
+
+    // Group by category
+    const categories = {};
+    bills.forEach(b => {
+        if(!categories[b.category]) categories[b.category] = [];
+        categories[b.category].push(b);
+    });
+
+    for(const cat in categories){
+        const catDiv = document.createElement("div");
+        catDiv.classList.add("mb-4");
+        const catTitle = document.createElement("h4");
+        catTitle.innerText = cat;
+        catTitle.classList.add("font-semibold", "text-gray-700", "mb-2");
+        catDiv.appendChild(catTitle);
+
+        categories[cat].forEach(b => {
+            const bDiv = document.createElement("div");
+            bDiv.classList.add("flex", "justify-between", "items-center", "p-3", "rounded-lg", "shadow-sm");
+
+            const dueDate = new Date(b.due_date);
+            let statusClass = "bg-red-500 text-white"; // default unpaid
+            if(b.status === "paid") statusClass = "bg-green-500 text-white";
+            else if(b.status === "unpaid" && (dueDate - now)/(1000*60*60*24) <= 3 && (dueDate - now) > 0) {
+                statusClass = "bg-orange-500 text-white";
+            }
+
+            bDiv.innerHTML = `
+                <div>
+                  <strong>${b.title}</strong> - $${b.amount.toFixed(2)} - ${b.due_date}
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span class="px-2 py-1 rounded ${statusClass}">${b.status}</span>
+                  ${b.status !== "paid" ? `<button onclick="markPaid('${b.id}')" class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 transition">✔</button>` : ""}
+                </div>
+            `;
+            catDiv.appendChild(bDiv);
+        });
+
+        billsListDiv.appendChild(catDiv);
+    }
+}
+
+// Mark as paid
+function markPaid(bill_id){
+    sendToBot({action: "mark_paid", bill_id});
+    setTimeout(listBills, 500);
+}
+</script>
+</body>
+</html>
