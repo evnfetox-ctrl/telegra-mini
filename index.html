@@ -30,6 +30,11 @@
 const tg = window.Telegram.WebApp;
 tg.ready();
 
+// Fetch list of bills from bot
+function listBills() {
+    tg.sendData(JSON.stringify({action:"list_bills"}));
+}
+
 // Add a bill
 function addBill() {
     const billData = {
@@ -42,24 +47,31 @@ function addBill() {
     tg.sendData(JSON.stringify(billData));
 }
 
-// Request list of bills
-function listBills() {
-    tg.sendData(JSON.stringify({action:"list_bills"}));
+// Mark a bill as paid
+function markPaid(bill_id) {
+    tg.sendData(JSON.stringify({action:"mark_paid", bill_id}));
 }
 
-// Listen for bot responses
+// Handle bot responses
 tg.onEvent("message", (msg) => {
-    const response = JSON.parse(msg.data);
-    console.log("Bot response:", response);
+    if (!msg.data) return;
+    try {
+        const response = JSON.parse(msg.data);
 
-    if(response.status === "success") {
-        if(response.bills) {
-            renderBills(response.bills);
-        } else if(response.bill) {
-            listBills(); // Refresh after adding
+        if(response.status === "success") {
+            // If it contains bills, render dashboard
+            if(response.bills) {
+                renderBills(response.bills);
+            }
+            // If a single bill action, refresh list
+            else if(response.bill) {
+                listBills();
+            }
+        } else {
+            alert("Error: " + response.error);
         }
-    } else {
-        alert("Error: " + response.error);
+    } catch(e) {
+        console.error("Invalid JSON from bot:", msg.data);
     }
 });
 
@@ -68,7 +80,7 @@ function renderBills(bills) {
     const container = document.getElementById("billsList");
     container.innerHTML = "";
 
-    if(bills.length === 0) {
+    if(bills.length === 0){
         container.innerHTML = "<p class='text-gray-500'>No bills added yet.</p>";
         return;
     }
@@ -91,14 +103,10 @@ function renderBills(bills) {
     });
 }
 
-// Mark a bill as paid
-function markPaid(bill_id) {
-    tg.sendData(JSON.stringify({action:"mark_paid", bill_id}));
-}
-
 // Initial load
 listBills();
 </script>
+
 
 </body>
 </html>
